@@ -1,0 +1,13 @@
+{
+  "compileOnSave": false,
+  "compilerOptions": {
+    "target": "ES2017",
+    "checkJs": true,
+    "module": "commonjs"
+  },
+  "exclude": [
+    "node_modules",
+    "**/node_modules/**",
+    "**/.cache/**"
+  ]
+}
