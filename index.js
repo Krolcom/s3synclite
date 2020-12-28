@@ -1,25 +1,22 @@
-const AWS = require('@aws-sdk/client-s3');
+const AWS = require('@aws-sdk/client-s3')
 
-const { stat, mkdir, unlink, rmdir, readFile, utimes } = require('fs').promises;
-const { createWriteStream, ReadStream } = require('fs')
+const { stat, mkdir, unlink, rmdir, readFile, utimes } = require('fs').promises
 const path = require('path')
 const { dirname } = path
-const {default: PQueue} = require('p-queue');
+const { default: PQueue } = require('p-queue')
 const getAllFiles = require('get-all-files').default
 
-
 const removeDirIfEmpty = async path => {
-  try{
-      await rmdir(path)
-  }
-  catch(err){
-      return false;
+  try {
+    await rmdir(path)
+  } catch (err) {
+    return false
   }
   return true
 }
 
 const getFileUpdatedDate = async path => {
-  try{
+  try {
     return (await stat(path)).mtime
   } catch (e) {}
   // return epoch
@@ -29,10 +26,10 @@ const getFileUpdatedDate = async path => {
 /**
  * check to see if path is a directory
  * @param {String} path
- * @return {Promise<Boolean>} 
+ * @return {Promise<Boolean>}
  */
 const isDirectory = async path => {
-  try{  
+  try {
     return (await stat(path)).isDirectory()
   } catch (e) {}
   return false
@@ -46,20 +43,19 @@ const isDirectory = async path => {
  * @param {String} region aws region
  * @param {boolean} [deleteRemoved=false] remove local objects that are no stored in s3
  */
-const downloadBucket = async (source, destination, region, deleteRemoved = false) => {  
-
-  await mkdir(destination, {recursive: true})
+const downloadBucket = async (source, destination, region, deleteRemoved = false) => {
+  await mkdir(destination, { recursive: true })
 
   // find path of s3 bucket
   const startOfPath = source.indexOf('/') + 1
-  const Prefix = startOfPath === 0 ? '' : (source.substring(source.length -1) === '/' ? source.substring(startOfPath) : source.substring(startOfPath) + '/')
+  const Prefix = startOfPath === 0 ? '' : (source.substring(source.length - 1) === '/' ? source.substring(startOfPath) : source.substring(startOfPath) + '/')
   const Bucket = startOfPath === 0 ? source : source.split('/', 2)[0]
-  
+
   const s3 = new AWS.S3({
     apiVersion: '2006-03-01',
     credentials: {
       accessKeyId: process.env.AWS_ACCESS_KEY_ID,
-      secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
+      secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY
     },
     region
   })
@@ -71,60 +67,58 @@ const downloadBucket = async (source, destination, region, deleteRemoved = false
     interval: 100
   })
 
-
   const downloadedFiles = []
 
   // make destination directory incase it doesn't exist
-  await mkdir(destination, {recursive: true})
-  
+  await mkdir(destination, { recursive: true })
+
   let stillFindingFiles = true
   let ContinuationToken
 
   while (stillFindingFiles) {
     // find objects in s3 bucket
-    const objects = await new Promise((resolve,reject) => {
+    const objects = await new Promise((resolve, reject) => {
       s3.listObjectsV2({
         Bucket,
         ContinuationToken,
         Prefix
       }, (err, data) => {
-        if(err) return reject(err)
+        if (err) return reject(err)
         resolve(data)
       })
-    }) 
+    })
 
     // loop through found objects
-    for (let { Key, LastModified } of objects.Contents || []) {
+    for (const { Key, LastModified } of objects.Contents || []) {
       const localKey = Key.substring(Prefix.length)
 
       if (deleteRemoved) {
         downloadedFiles.push(localKey)
       }
 
-      const outputFilePath = `${destination}/${localKey}`  
+      const outputFilePath = `${destination}/${localKey}`
       // check to see if the file is up to date
       const existingFileDate = await getFileUpdatedDate(outputFilePath)
       if (LastModified <= existingFileDate) {
-        //console.debug(`${Key} is up to date.`)
+        // console.debug(`${Key} is up to date.`)
         continue
       }
 
       // add the download to the queue
-      downloadQueue.add(async () => {  
-        
+      downloadQueue.add(async () => {
         // make sure destination directory exists
         await mkdir(dirname(outputFilePath), { recursive: true })
 
         var file = require('fs').createWriteStream(outputFilePath)
 
-        /** @type {ReadStream} */
+        /** @type {Object} */
         // @ts-ignore
         const data = (await s3.getObject({
           Bucket,
           Key
         })).Body
-        
-        const finishedDownloading = new Promise(function(resolve, reject) {
+
+        const finishedDownloading = new Promise(function (resolve, reject) {
           data.on('end', () => resolve(data.read()))
           file.on('error', reject)
         })
@@ -137,14 +131,13 @@ const downloadBucket = async (source, destination, region, deleteRemoved = false
 
         console.log(`Downloaded: ${localKey}`)
         return data
-      
       })
     }
 
     stillFindingFiles = objects.IsTruncated
     ContinuationToken = objects.NextContinuationToken
   }
-  
+
   await downloadQueue.onIdle()
 
   if (deleteRemoved) {
@@ -152,15 +145,14 @@ const downloadBucket = async (source, destination, region, deleteRemoved = false
     // console.log(existingFiles)
     // console.log(downloadedFiles)
     const filesToDelete = existingFiles
-    .filter(x => !downloadedFiles.includes(x))
-    .concat(downloadedFiles.filter(x => !existingFiles.includes(x)))
-    
+      .filter(x => !downloadedFiles.includes(x))
+      .concat(downloadedFiles.filter(x => !existingFiles.includes(x)))
+
     filesToDelete.sort((a, b) => b.length - a.length)
 
-    for(let o of filesToDelete){
-      if((await isDirectory(`${destination}/${o}`))) {
+    for (const o of filesToDelete) {
+      if ((await isDirectory(`${destination}/${o}`))) {
         if (await removeDirIfEmpty(`${destination}/${o}`)) {
-          
           console.log(`Deleted Directory: ${destination}/${o} because it is empty.`)
         }
         continue
@@ -168,8 +160,7 @@ const downloadBucket = async (source, destination, region, deleteRemoved = false
       try {
         await unlink(`${destination}/${o}`)
         console.log(`Deleted: ${o}`)
-      }
-      catch (e) {
+      } catch (e) {
         console.error(`Failed to delete: ${o}`)
       }
     }
@@ -188,14 +179,14 @@ exports.downloadBucket = downloadBucket
 const uploadBucket = async (source, destination, region, deleteRemoved = false) => {
   // find path of s3 bucket
   const startOfPath = destination.indexOf('/') + 1
-  const Prefix = startOfPath === 0 ? '' : (destination.substring(destination.length -1) === '/' ? destination.substring(startOfPath) : destination.substring(startOfPath) + '/')
+  const Prefix = startOfPath === 0 ? '' : (destination.substring(destination.length - 1) === '/' ? destination.substring(startOfPath) : destination.substring(startOfPath) + '/')
   const Bucket = startOfPath === 0 ? destination : destination.split('/', 2)[0]
-  
+
   const s3 = new AWS.S3({
     apiVersion: '2006-03-01',
     credentials: {
       accessKeyId: process.env.AWS_ACCESS_KEY_ID,
-      secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
+      secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY
     },
     region
   })
@@ -208,36 +199,36 @@ const uploadBucket = async (source, destination, region, deleteRemoved = false) 
   })
 
   const localFiles = (await getAllFiles.async.array(source)).map(o => o.substring(source.length + 1))
-  
+
   for (const relativeFilePath of localFiles) {
     const filePath = `${source}/${relativeFilePath}`
-    
+
     // add the upload to the queue
     await uploadQueue.add(async () => {
-        let uploadFile = false
+      let uploadFile = false
 
-        try {
-          const objectMetadata = await s3.headObject({
-            Bucket,
-            Key: `${Prefix}${relativeFilePath}`
-          })
-          
-          uploadFile = objectMetadata.LastModified < await getFileUpdatedDate(filePath)
-        } catch (e) {
-          uploadFile = true
-        }
-
-        if(!uploadFile){
-          return
-        }
-
-        const data = await s3.putObject({
-          Body: await readFile(filePath),
+      try {
+        const objectMetadata = await s3.headObject({
           Bucket,
           Key: `${Prefix}${relativeFilePath}`
         })
-        console.log(`Uploaded: ${relativeFilePath}`)
-        return data
+
+        uploadFile = objectMetadata.LastModified < await getFileUpdatedDate(filePath)
+      } catch (e) {
+        uploadFile = true
+      }
+
+      if (!uploadFile) {
+        return
+      }
+
+      const data = await s3.putObject({
+        Body: await readFile(filePath),
+        Bucket,
+        Key: `${Prefix}${relativeFilePath}`
+      })
+      console.log(`Uploaded: ${relativeFilePath}`)
+      return data
     })
   }
 
@@ -248,35 +239,35 @@ const uploadBucket = async (source, destination, region, deleteRemoved = false) 
     const existingFiles = []
     let stillFindingFiles = true
     let ContinuationToken
-  
+
     while (stillFindingFiles) {
       // find objects in s3 bucket
-      const objects = await new Promise((resolve,reject) => {
+      const objects = await new Promise((resolve, reject) => {
         s3.listObjectsV2({
           Bucket,
           ContinuationToken,
           Prefix
         }, (err, data) => {
-          if(err) return reject(err)
+          if (err) return reject(err)
           resolve(data)
         })
-      }) 
-  
+      })
+
       // loop through found objects
-      for (let { Key, LastModified } of objects.Contents || []) {
+      for (const { Key } of objects.Contents || []) {
         const localKey = Key.substring(Prefix.length)
         existingFiles.push(localKey)
       }
-  
+
       stillFindingFiles = objects.IsTruncated
       ContinuationToken = objects.NextContinuationToken
     }
 
     const filesToDelete = existingFiles
-    .filter(x => !localFiles.includes(x))
-    .concat(localFiles.filter(x => !existingFiles.includes(x)))
-        
-    for(let o of filesToDelete) {
+      .filter(x => !localFiles.includes(x))
+      .concat(localFiles.filter(x => !existingFiles.includes(x)))
+
+    for (const o of filesToDelete) {
       await uploadQueue.add(async () => {
         await s3.deleteObject({
           Bucket,
@@ -288,8 +279,7 @@ const uploadBucket = async (source, destination, region, deleteRemoved = false) 
   }
 
   // wait for all downloads to finish
-  await uploadQueue.onIdle();
+  await uploadQueue.onIdle()
 }
-
 
 exports.uploadBucket = uploadBucket
