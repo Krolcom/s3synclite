@@ -35,6 +35,79 @@ const isDirectory = async path => {
   return false
 }
 
+const deleteFolderFromBucket = async (source, region) => {
+  // find path of s3 bucket
+  const startOfPath = source.indexOf('/') + 1
+  const Prefix = startOfPath === 0 ? '' : (source.substring(source.length - 1) === '/' ? source.substring(startOfPath) : source.substring(startOfPath) + '/')
+  const Bucket = startOfPath === 0 ? source : source.split('/', 2)[0]
+
+  let stillFindingFiles = true
+  let ContinuationToken
+
+  const s3 = new AWS.S3({
+    apiVersion: '2006-03-01',
+    credentials: {
+      accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+      secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY
+    },
+    region
+  })
+
+  const deleteQueue = new PQueue({
+    concurrency: 5,
+    autoStart: true,
+    intervalCap: 1,
+    interval: 500
+  })
+
+  while (stillFindingFiles) {
+    // find objects in s3 bucket
+    const objects = await new Promise((resolve, reject) => {
+      s3.listObjectsV2({
+        Bucket,
+        ContinuationToken,
+        Prefix
+      }, (err, data) => {
+        if (err) return reject(err)
+        resolve(data)
+      })
+    })
+
+    // array of objects to be removed
+    const Objects = []
+
+    // loop through found objects
+    for (const { Key } of objects.Contents || []) {
+      // add item for removal
+      Objects.push({ Key })
+    }
+
+    if (Objects.length) {
+      console.log(`Deleting ${Objects.length} objects from ${Bucket}...`)
+
+      // add the download to the queue
+      deleteQueue.add(async () => {
+        // make sure destination directory exists
+
+        return s3.deleteObjects({
+          Bucket,
+          Delete: {
+            Objects,
+            Quiet: true
+          }
+        })
+      })
+    }
+
+    stillFindingFiles = objects.IsTruncated
+    ContinuationToken = objects.NextContinuationToken
+  }
+
+  await deleteQueue.onIdle()
+}
+
+exports.deleteFolderFromBucket = deleteFolderFromBucket
+
 /**
  *
  *
