@@ -1,6 +1,7 @@
 const AWS = require('@aws-sdk/client-s3')
 
-const { stat, mkdir, unlink, rmdir, readFile, utimes } = require('fs').promises
+const { stat, lstat, mkdir, unlink, rmdir, readFile, utimes } = require('fs').promises
+const { existsSync } = require('fs')
 const path = require('path')
 const { dirname } = path
 const { default: PQueue } = require('p-queue')
@@ -33,6 +34,10 @@ const isDirectory = async path => {
     return (await stat(path)).isDirectory()
   } catch (e) {}
   return false
+}
+
+const isSymlink = async path => {
+  (await lstat(path)).isSymbolicLink()
 }
 
 const deleteFolderFromBucket = async (source, region) => {
@@ -174,6 +179,11 @@ const downloadBucket = async (source, destination, region, deleteRemoved = false
       const existingFileDate = await getFileUpdatedDate(outputFilePath)
       if (LastModified <= existingFileDate) {
         // console.debug(`${Key} is up to date.`)
+        continue
+      }
+
+      if (existsSync(outputFilePath) && isSymlink(outputFilePath)) {
+        console.log(`${Key} file is a symlink, skipping...`)
         continue
       }
 
