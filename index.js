@@ -120,6 +120,7 @@ exports.deleteFolderFromBucket = deleteFolderFromBucket
  * @param {String} destination local folder to download data
  * @param {String} region aws region
  * @param {boolean} [deleteRemoved=false] remove local objects that are no stored in s3
+ * @returns {Promise<number>} files downloaded and deleted
  */
 const downloadBucket = async (source, destination, region, deleteRemoved = false) => {
   await mkdir(destination, { recursive: true })
@@ -183,7 +184,7 @@ const downloadBucket = async (source, destination, region, deleteRemoved = false
       }
 
       if (existsSync(outputFilePath) && isSymlink(outputFilePath)) {
-        console.log(`${Key} file is a symlink, skipping...`)
+        // console.log(`${Key} file is a symlink, skipping...`)
         continue
       }
 
@@ -223,6 +224,7 @@ const downloadBucket = async (source, destination, region, deleteRemoved = false
 
   await downloadQueue.onIdle()
 
+  let deletedFiles = 0
   if (deleteRemoved) {
     const existingFiles = (await getAllFiles.async.array(destination)).map(o => o.substring(destination.length + 1))
     // console.log(existingFiles)
@@ -241,6 +243,7 @@ const downloadBucket = async (source, destination, region, deleteRemoved = false
         continue
       }
       try {
+        deletedFiles++
         await unlink(`${destination}/${o}`)
         console.log(`Deleted: ${o}`)
       } catch (e) {
@@ -248,6 +251,7 @@ const downloadBucket = async (source, destination, region, deleteRemoved = false
       }
     }
   }
+  return downloadedFiles.length + deletedFiles
 }
 
 exports.downloadBucket = downloadBucket
