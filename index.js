@@ -372,9 +372,18 @@ const uploadBucket = async (source, destination, region, deleteRemoved = false) 
       ContinuationToken = objects.NextContinuationToken
     }
 
-    const filesToDelete = existingFiles
+    // await filter((await getAllFiles.async.array(source)).map(o => o.substring(source.length + 1)), async o => {
+    //   const filePath = `${source}/${o}`
+    //   const result = await isSymlink(filePath)
+    //   return !result
+    // })
+    const filesToDelete = await filter(existingFiles
       .filter(x => !localFiles.includes(x))
-      .concat(localFiles.filter(x => !existingFiles.includes(x)))
+      .concat(localFiles.filter(x => !existingFiles.includes(x))), async o => {
+      const filePath = `${source}/${o}`
+      const result = await isSymlink(filePath)
+      return !result
+    })
 
     for (const o of filesToDelete) {
       await uploadQueue.add(async () => {
