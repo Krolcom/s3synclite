@@ -23,19 +23,19 @@
   },
   "homepage": "https://github.com/Krolcom/s3synclite#readme",
   "dependencies": {
-    "@aws-sdk/client-s3": "^3.2.0",
+    "@aws-sdk/client-s3": "^3.4.1",
     "get-all-files": "^3.0.0",
     "p-queue": "^6.6.2"
   },
   "devDependencies": {
-    "@types/node": "^14.14.20",
-    "eslint": "^7.17.0",
+    "@types/node": "^14.14.25",
+    "eslint": "^7.19.0",
     "eslint-config-prettier": "^6.11.0",
     "eslint-config-standard": "^14.1.1",
     "eslint-plugin-import": "^2.22.0",
     "eslint-plugin-node": "^11.1.0",
     "eslint-plugin-prettier": "^3.3.1",
-    "eslint-plugin-promise": "^4.2.1",
+    "eslint-plugin-promise": "^4.3.1",
     "eslint-plugin-standard": "^4.0.1",
     "prettier": "^2.0.5"
   }
