@@ -17,6 +17,11 @@ const removeDirIfEmpty = async path => {
   return true
 }
 
+async function filter (arr, callback) {
+  // eslint-disable-next-line symbol-description
+  const fail = Symbol()
+  return (await Promise.all(arr.map(async item => (await callback(item)) ? item : fail))).filter(i => i !== fail)
+}
 // const getFileUpdatedDate = async path => {
 //   try {
 //     return (await stat(path)).mtime
@@ -38,7 +43,11 @@ const isDirectory = async path => {
 }
 
 const isSymlink = async path => {
-  return (await lstat(path)).isSymbolicLink()
+  try {
+    return (await lstat(path)).isSymbolicLink()
+  } catch (e) {
+    return false
+  }
 }
 
 const deleteFolderFromBucket = async (source, region) => {
@@ -239,9 +248,13 @@ const downloadBucket = async (source, destination, region, deleteRemoved = false
     const existingFiles = (await getAllFiles.async.array(destination)).map(o => o.substring(destination.length + 1))
     // console.log(existingFiles)
     // console.log(downloadedFiles)
-    const filesToDelete = existingFiles
+    const filesToDelete = await filter(existingFiles
       .filter(x => !downloadedFiles.includes(x))
-      .concat(downloadedFiles.filter(x => !existingFiles.includes(x)))
+      .concat(downloadedFiles.filter(x => !existingFiles.includes(x))), async o => {
+      const filePath = `${destination}/${o}`
+      const result = await isSymlink(filePath)
+      return !result
+    })
 
     filesToDelete.sort((a, b) => b.length - a.length)
 
@@ -255,7 +268,7 @@ const downloadBucket = async (source, destination, region, deleteRemoved = false
       try {
         deletedFiles++
         await unlink(`${destination}/${o}`)
-        console.log(`Deleted: ${o}`)
+        console.log(`Local Deleted: ${o}`)
       } catch (e) {
         console.error(`Failed to delete: ${o}`)
       }
@@ -294,12 +307,6 @@ const uploadBucket = async (source, destination, region, deleteRemoved = false) 
     intervalCap: 1,
     interval: 100
   })
-
-  async function filter (arr, callback) {
-    // eslint-disable-next-line symbol-description
-    const fail = Symbol()
-    return (await Promise.all(arr.map(async item => (await callback(item)) ? item : fail))).filter(i => i !== fail)
-  }
 
   const localFiles = await filter((await getAllFiles.async.array(source)).map(o => o.substring(source.length + 1)), async o => {
     const filePath = `${source}/${o}`
@@ -377,13 +384,9 @@ const uploadBucket = async (source, destination, region, deleteRemoved = false) 
     //   const result = await isSymlink(filePath)
     //   return !result
     // })
-    const filesToDelete = await filter(existingFiles
+    const filesToDelete = existingFiles
       .filter(x => !localFiles.includes(x))
-      .concat(localFiles.filter(x => !existingFiles.includes(x))), async o => {
-      const filePath = `${source}/${o}`
-      const result = await isSymlink(filePath)
-      return !result
-    })
+      .concat(localFiles.filter(x => !existingFiles.includes(x)))
 
     for (const o of filesToDelete) {
       await uploadQueue.add(async () => {
@@ -391,7 +394,7 @@ const uploadBucket = async (source, destination, region, deleteRemoved = false) 
           Bucket,
           Key: `${Prefix}${o}`
         })
-        console.log(`Deleted: ${o}`)
+        console.log(`Remote Deleted: ${o}`)
       })
     }
   }
