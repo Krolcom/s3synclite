@@ -37,7 +37,7 @@ const isDirectory = async path => {
 }
 
 const isSymlink = async path => {
-  (await lstat(path)).isSymbolicLink()
+  return (await lstat(path)).isSymbolicLink()
 }
 
 const deleteFolderFromBucket = async (source, region) => {
@@ -183,7 +183,7 @@ const downloadBucket = async (source, destination, region, deleteRemoved = false
         continue
       }
 
-      if (existsSync(outputFilePath) && isSymlink(outputFilePath)) {
+      if (existsSync(outputFilePath) && await isSymlink(outputFilePath)) {
         // console.log(`${Key} file is a symlink, skipping...`)
         continue
       }
@@ -285,9 +285,16 @@ const uploadBucket = async (source, destination, region, deleteRemoved = false) 
     interval: 100
   })
 
-  const localFiles = (await getAllFiles.async.array(source)).map(o => o.substring(source.length + 1)).filter(o => {
+  async function filter (arr, callback) {
+    // eslint-disable-next-line symbol-description
+    const fail = Symbol()
+    return (await Promise.all(arr.map(async item => (await callback(item)) ? item : fail))).filter(i => i !== fail)
+  }
+
+  const localFiles = await filter((await getAllFiles.async.array(source)).map(o => o.substring(source.length + 1)), async o => {
     const filePath = `${source}/${o}`
-    return !isSymlink(filePath)
+    const result = await isSymlink(filePath)
+    return !result
   })
 
   for (const relativeFilePath of localFiles) {
