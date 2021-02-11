@@ -285,7 +285,10 @@ const uploadBucket = async (source, destination, region, deleteRemoved = false) 
     interval: 100
   })
 
-  const localFiles = (await getAllFiles.async.array(source)).map(o => o.substring(source.length + 1))
+  const localFiles = (await getAllFiles.async.array(source)).map(o => o.substring(source.length + 1)).filter(o => {
+    const filePath = `${source}/${o}`
+    return !isSymlink(filePath)
+  })
 
   for (const relativeFilePath of localFiles) {
     const filePath = `${source}/${relativeFilePath}`
