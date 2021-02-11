@@ -6,6 +6,7 @@ const path = require('path')
 const { dirname } = path
 const { default: PQueue } = require('p-queue')
 const getAllFiles = require('get-all-files').default
+const hasha = require('hasha')
 
 const removeDirIfEmpty = async path => {
   try {
@@ -16,13 +17,13 @@ const removeDirIfEmpty = async path => {
   return true
 }
 
-const getFileUpdatedDate = async path => {
-  try {
-    return (await stat(path)).mtime
-  } catch (e) {}
-  // return epoch
-  return new Date(628021800000)
-}
+// const getFileUpdatedDate = async path => {
+//   try {
+//     return (await stat(path)).mtime
+//   } catch (e) {}
+//   // return epoch
+//   return new Date(628021800000)
+// }
 
 /**
  * check to see if path is a directory
@@ -168,7 +169,7 @@ const downloadBucket = async (source, destination, region, deleteRemoved = false
     })
 
     // loop through found objects
-    for (const { Key, LastModified } of objects.Contents || []) {
+    for (const { Key, LastModified, ETag } of objects.Contents || []) {
       const localKey = Key.substring(Prefix.length)
 
       if (deleteRemoved) {
@@ -176,17 +177,26 @@ const downloadBucket = async (source, destination, region, deleteRemoved = false
       }
 
       const outputFilePath = `${destination}/${localKey}`
-      // check to see if the file is up to date
-      const existingFileDate = await getFileUpdatedDate(outputFilePath)
-      if (LastModified <= existingFileDate) {
-        // console.debug(`${Key} is up to date.`)
-        continue
+
+      if (existsSync(outputFilePath)) {
+        // check if file is a symlink
+        if (await isSymlink(outputFilePath)) {
+          // console.log(`${Key} file is a symlink, skipping...`)
+          continue
+        }
+
+        const hash = await hasha.fromFile(outputFilePath, { algorithm: 'md5' })
+        if (hash === ETag.replace(/^"|"$/g, '')) {
+          continue
+        }
       }
 
-      if (existsSync(outputFilePath) && await isSymlink(outputFilePath)) {
-        // console.log(`${Key} file is a symlink, skipping...`)
-        continue
-      }
+      // // check to see if the file is up to date
+      // const existingFileDate = await getFileUpdatedDate(outputFilePath)
+      // if (LastModified <= existingFileDate) {
+      //   // console.debug(`${Key} is up to date.`)
+      //   continue
+      // }
 
       // add the download to the queue
       downloadQueue.add(async () => {
@@ -310,7 +320,9 @@ const uploadBucket = async (source, destination, region, deleteRemoved = false) 
           Key: `${Prefix}${relativeFilePath}`
         })
 
-        uploadFile = objectMetadata.LastModified < await getFileUpdatedDate(filePath)
+        // uploadFile = objectMetadata.LastModified < await getFileUpdatedDate(filePath)
+        const hash = await hasha.fromFile(filePath, { algorithm: 'md5' })
+        uploadFile = objectMetadata.ETag.replace(/^"|"$/g, '') !== hash
       } catch (e) {
         uploadFile = true
       }
