@@ -1,6 +1,6 @@
 {
   "name": "s3synclite",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "description": "Sync folders between local and s3",
   "main": "index.js",
   "scripts": {
